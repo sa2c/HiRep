@@ -5,6 +5,7 @@ on:
     branches:
       - master
       - spn
+      - testci
 
 jobs:
   build:
@@ -12,7 +13,7 @@ jobs:
     runs-on: self-hosted
     strategy:
       # Ensures that jobs are not cancelled is one job fails
-      fail-fast: false
+      fail-fast: true
       matrix:
         nc: [2, 3]
         repr: [FUND, ADJ]
