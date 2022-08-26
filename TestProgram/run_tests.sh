@@ -8,12 +8,13 @@ do
 done
 
 # if we are running inside a github action, change workdir
-echo $GITHUB_WORKSPACE
-pwd
 [ ! -z "$GITHUB_WORKSPACE" ] && cd $GITHUB_WORKSPACE/TestProgram
-pwd
 
 [ ! -d "$1" ] && echo First argument must be a subdirectory of TestProgram && exit 1
+
+stat ../Make/MkFlags
+touch ../Make/MkFlags
+stat ../Make/MkFlags
 
 ../Make/Utils/write_mkflags.pl -f ../Make/MkFlags ${@: 2} || exit 1
 
