@@ -12,6 +12,7 @@ done
 
 [ ! -d "$1" ] && echo First argument must be a subdirectory of TestProgram && exit 1
 
+whoami
 touch ../Make/MkFlags
 stat ../Make/MkFlags
 
