@@ -29,6 +29,7 @@ inputs:
 runs:
   using: 'docker'
   image: 'docker://cpica/hr-tests'
+  options: --user root
   args:
     - ./TestProgram/run_tests.sh
     - ${{ inputs.dir }}
