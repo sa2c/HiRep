@@ -9,8 +9,8 @@
 #include <string.h>
 #include <stdlib.h>
 
-#define MAX_SECTIONS 16
-#define MAX_VALUES 16
+#define MAX_SECTIONS 32
+#define MAX_VALUES 32
 #define MAX_LENGTH 64
 
 typedef struct {
