@@ -21,4 +21,6 @@ void _group_represent2_flt(suNf_flt* v, suNg_flt *u);
 void represent_gauge_field();
 void represent_gauge_field_measure();
 
+/* APE smearing*/
+void represent_gauge_field_APE();
 #endif

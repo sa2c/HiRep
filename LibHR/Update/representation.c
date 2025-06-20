@@ -473,3 +473,78 @@ void represent_gauge_field()
   compute_clover_term();
 #endif
 }
+
+void represent_gauge_field_APE()
+{
+#ifdef WITH_SMEARING
+    smear_gauge_field();
+#endif
+
+#ifdef ALLOCATE_REPR_GAUGE_FIELD
+  /* loop on local lattice first */
+  _MASTER_FOR(&glattice,ix) {
+//  for(ip=0;ip<glattice.local_master_pieces;ip++)
+//    for(ix=glattice.master_start[ip];ix<=glattice.master_end[ip];ix++)
+      for (int mu=0;mu<4;mu++) {
+#ifdef WITH_SMEARING
+        suNg *u=_4FIELD_AT(u_gauge_APE_s,ix,mu);
+#else
+        suNg *u=pu_gauge_APE(ix,mu);
+#endif
+        suNf *Ru=pu_gauge_APE_f(ix,mu);
+        #ifdef UNROLL_GROUP_REPRESENT
+          _group_represent(*Ru,*u);
+        #else
+          _group_represent2(Ru,u);
+        #endif
+      }
+  }
+  
+  /* wait gauge field transfer */
+  complete_gf_sendrecv(u_gauge_APE);
+
+  /* loop on the rest of master sites */
+_OMP_PRAGMA ( _omp_parallel )
+  for(int ip=glattice.local_master_pieces;ip<glattice.total_gauge_master_pieces;ip++) {
+_OMP_PRAGMA ( _omp_for )
+    for(int ix=glattice.master_start[ip];ix<=glattice.master_end[ip];ix++)
+      for (int mu=0;mu<4;mu++) {
+#ifdef WITH_SMEARING
+        suNg *u=_4FIELD_AT(u_gauge_APE_s,ix,mu);
+#else
+        suNg *u=pu_gauge_APE(ix,mu);
+#endif
+        suNf *Ru=pu_gauge_APE_f(ix,mu);
+        #ifdef UNROLL_GROUP_REPRESENT
+          _group_represent(*Ru,*u);
+        #else
+          _group_represent2(Ru,u);
+        #endif
+      }
+  }
+  
+  apply_BCs_on_represented_gauge_field_APE();
+#else
+  static int first_time=1;
+  /* wait gauge field transfer */
+  complete_gf_sendrecv(u_gauge_APE);
+
+  if(first_time) {
+    first_time=0;
+#ifdef WITH_SMEARING
+      u_gauge_APE_f=(suNf_field *)((void*)u_gauge_APE_s);
+#else
+    u_gauge_APE_f=(suNf_field *)((void*)u_gauge_APE);
+#endif
+    //    apply_BCs_on_represented_gauge_field(); //Already applied when configuration read or initialized
+  }
+  complete_gf_sendrecv(u_gauge_APE);
+  u_gauge_APE_f=(suNf_field *)((void*)u_gauge_APE);
+
+#endif
+  assign_ud2u_APE_f();
+
+#ifdef WITH_CLOVER
+  compute_clover_term();
+#endif
+}

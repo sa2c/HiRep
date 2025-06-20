@@ -19,6 +19,8 @@
 
 void measure_spectrum_semwall(int nm, double* m, int nhits,int conf_num, double precision,storage_switch swc, data_storage_array **ret);
 void measure_spectrum_discon_semwall(int nm, double* m, int nhits,int conf_num, double precision,storage_switch swc, data_storage_array **ret);
+void measure_spectrum_discon_semwall_smeared(int nm, double* m, int nhits, int conf_num, double precision, double epsilon_source, int Nsmear_source, double APE_epsilon, int APE_N, int N_diff);
+void measure_spectrum_discon_semwall_smeared_single_inversion(int nm, double* m, int nhits, int conf_num, double precision, double epsilon_source, int Nsmear_source, double APE_epsilon, int APE_N, int N_diff);
 void measure_spectrum_discon_gfwall(int nm, double* m, int conf_num, double precision,storage_switch swc, data_storage_array **ret);
 void measure_spectrum_discon_volume(int nm, double* m, int conf_num, double precision, int dil,storage_switch swc, data_storage_array **ret);
 void measure_spectrum_gfwall(int nm, double* m, int conf_num, double precision,storage_switch swc, data_storage_array **ret);

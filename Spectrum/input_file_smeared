@@ -1,0 +1,74 @@
+// Global variables
+GLB_T = 8
+GLB_X = 4
+GLB_Y = 4
+GLB_Z = 4
+NP_T = 2
+NP_X = 1
+NP_Y = 1
+NP_Z = 1
+
+// Replicas
+N_REP = 1
+
+// Random generator
+rlx_level = 1
+rlx_seed = 11228
+rlx_start = new
+rlx_state = ./out/rlx_state
+
+log:default = -1
+log:inverter = -1
+log:forcestat = 0
+
+mes:precision = 1.e-14
+mes:nhits = 1
+mes:nhits_disc = 4
+mes:masses = -0.85
+mes:use_input_mass = 0
+mes:meas_mixed = 0
+mes:nhits_2pt = 1
+mes:momentum = 0
+mes:def_semwall = 0
+mes:def_semwall_nondeg = 0
+mes:def_point = 0
+mes:def_baryon = 0
+mes:def_gfwall = 0
+mes:ext_semwall = 0
+mes:ext_point = 0
+mes:dirichlet_semwall = 0
+mes:dirichlet_point = 0
+mes:dirichlet_gfwall = 0
+mes:discon_semwall = 0
+mes:discon_gfwall = 0
+mes:discon_volume = 0
+mes:dilution = 1
+mes:dirichlet_dt = 2
+mes:configlist = listfile_spectrum
+
+// Measure smeared meson spectrum
+// enable source and sink smearing
+mes:smearing_source_sink = 1
+mes:discon_semwall_smeared = 1
+
+// point source location for source ans sink smearing
+mes:source_t = 0
+mes:source_x = 0
+mes:source_y = 0
+mes:source_z = 0
+
+// source and sink smearing parameters
+mes:smear_epsilon_source = 0.2
+mes:smear_N_source = 50
+mes:smear_epsilon_sink = 0.2
+mes:smear_N_sink = 50
+mes:smear_N_step = 10
+//APE smearing activate if APE_N != 0
+mes:APE_epsilon = 0.4
+mes:APE_N = 10
+
+//Whether to include the four fermion interaction
+ff:on = false
+//Parameters for hopping parameter expansion, 0 in degree_hopping to disable
+mes:degree_hopping = 0
+mes:nhits_hopping = 5

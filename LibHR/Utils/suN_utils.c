@@ -447,3 +447,214 @@ void covariant_project_to_suNg(suNg *u)
 
   _suNg_times_suNg(*u, tmp1, tmp);
 }
+
+
+void cooling_SPN(suNg* g_out, suNg* g_in, suNg* g_tilde, int cooling){
+  /**
+   * @brief Cooling algorithm for SP(N) gauge fields applies the beta=infinity limit of the Cabibbo-Mariani algorithm,
+   * which gives the maximum value of Re Tr(g_tilde g_in).
+   * 
+   * We follow the procedure described in https://arxiv.org/pdf/hep-lat/0404008, for the SU(N) case.
+   * 
+   * @param g_out: Pointer to the output gauge field after cooling.
+   * @param g_in: Pointer to the input gauge field before cooling, which is U in Eq. (25) of the reference.
+   * @param g_tilde: Pointer to the input gauge field before cooling, which is \tilde{U} in Eq. (25) of the reference.
+   * @param cooling: Number of cooling iterations to perform.
+   * @note `subgrb` and `subgrb_tau` are helper functions to extract the SU(2) sub-matrices, 
+   * while `vmxsu2` and `vmxsu2_tau` are helper functions to multiply the SU(2) sub-matrices.
+   * See detail explanations in Appendex A of the reference: https://arxiv.org/abs/2010.15781.
+   */
+    
+    suNgfull B, U_tilde, S;
+    _suNg_expand( U_tilde, *g_tilde);
+    _suNg_expand( S, *g_in);
+        
+    for (int nbcool=0;nbcool<cooling;nbcool++){
+        _suNgfull_times_suNgfull_dagger(B, S, U_tilde);
+        
+        for (int N1=0;N1<NG/2-1;N1++){
+            for (int N2=N1+1;N2<NG/2;N2++){
+                subgrb(N1, N2, &B, &S);
+                subgrb(NG/2 + N1, NG/2 + N2, &B, &S);
+                subgrb_tau( N1, N2, &B, &S);
+                subgrb(N1, NG/2 + N1, &B, &S);
+                subgrb(N2, NG/2 + N2, &B, &S);
+            }
+        }       
+    }
+    
+    for (int i=0;i<(NG/2)*NG;i++){
+        
+        g_out->c[i] = S.c[i];
+    }
+}
+
+
+void subgrb(int i1col, int i2col, suNgfull* B11, suNgfull* C11){
+  /**
+  * @brief Extracts an SU(2) subgroup from a Sp(N) matrix and applies a transformation.
+  * 
+  * This function targets the SU(2) subgroup defined by the columns `i1col` and `i2col`
+  * of the input Sp(N) matrix `B11`. It constructs an SU(2) of type Eq. (A4) in the paper: https://arxiv.org/abs/2010.15781,
+  * normalizes it, and applies it to both `C11` and `B11` via left multiplication.
+  * 
+  * @param i1col Index of the first column in Sp(N) matrix `B11`.
+  * @param i2col Index of the second column in Sp(N) matrix `B11`.
+  * @param B11 Pointer to the Sp(N) matrix to be updated in-place.
+  * @param C11 Pointer to a Sp(N) matrix also updated by the same SU(2) transformation.
+  */
+    
+    double complex F11, F12, A11[4], ztmp1, ztmp2;    // A11 is the extracted su2 matrix in 1-d array
+    double UMAG;                               // [ 0 1 ]
+    int i1,i2,i3,i4;                           // [ 2 3 ]   --> [0, 1, 2, 3]
+    
+    i1 = i1col + i1col*NG;
+    i2 = i2col + i2col*NG;
+    i3 = i2col + i1col*NG;
+    i4 = i1col + i2col*NG;
+    
+    _complex_add_star(F11, B11->c[i1], B11->c[i2]);
+    _complex_mulr(F11, 0.5, F11);
+    _complex_sub_star(F12, B11->c[i3], B11->c[i4]);
+    _complex_mulr(F12, 0.5, F12);
+    
+    
+    _complex_mul_star(ztmp1, F11, F11);
+    _complex_mul_star(ztmp2, F12, F12);
+    UMAG = sqrt(creal(ztmp1)+creal(ztmp2));
+    UMAG = 1./UMAG;
+    
+    _complex_mulr(F11, UMAG, F11);
+    _complex_mulr(F12, UMAG, F12);
+    
+    _complex_star(A11[0], F11);
+    _complex_star(A11[1], F12);
+    _complex_mulr(A11[2], -1., F12);
+    _complex_mulr(A11[3],  1., F11);
+    
+    vmxsu2(i1col,i2col,C11,A11);
+    vmxsu2(i1col,i2col,B11,A11);
+}
+
+
+void vmxsu2(int i1, int i2, suNgfull* A, double complex B[4]){
+
+  /**
+   * @brief Multiplies columns i1 and i2 of a Sp(N) matrix by a 2×2 SU(2) matrix.
+   *
+   * Applies an SU(2) rotation on columns i1 and i2 of matrix `A`, using matrix `B`
+   * provided in row-major order as a 1D array of 4 complex numbers.
+   * 
+   * @param i1 First column index of Sp(N) matrix A.
+   * @param i2 Second column index of Sp(N) matrix A.
+   * @param A  Pointer to the Sp(N) matrix.
+   * @param B  SU(2) matrix in vector form: {B00, B01, B10, B11}.
+   */
+    
+    double complex C[NG*2];
+    double complex ztmp1,ztmp2;
+    
+    for (int i=0; i<NG; i++){
+        _complex_mul(ztmp1, A->c[i + i1*NG], B[0]);
+        _complex_mul(ztmp2, A->c[i + i2*NG], B[2]);
+        _complex_add(C[i], ztmp1, ztmp2);
+        
+        _complex_mul(ztmp1, A->c[i + i1*NG], B[1]);
+        _complex_mul(ztmp2, A->c[i + i2*NG], B[3]);
+        _complex_add(C[i+NG], ztmp1, ztmp2);
+    }
+    
+    for (int i=0; i<NG; i++){
+        A->c[i + i1*NG] = C[i];
+        A->c[i + i2*NG] = C[i+NG];
+    }
+}
+
+
+void subgrb_tau(int n1, int n2, suNgfull* B11, suNgfull* C11){
+
+  /**
+   * @brief Applies an SU(2) tau-subgroup transformation that mixes upper and lower blocks of Sp(N).
+   *
+   * Constructs a SU(2) matrix of type Eq. (A5) in the paper: https://arxiv.org/abs/2010.15781,
+   * 
+   * Applies the resulting SU(2) matrix to both `B11` and `C11`.
+   *
+   * @param n1 Index in upper block.
+   * @param n2 Index in lower block.
+   * @param B11 Matrix B = S \tilde{U}^\dagger, used to generate the SU(2) transformation.
+   * @param C11 Matrix S, updated with the transformation.
+   */
+    
+    double complex F11, F12, A11[4], ztmp1, ztmp2;    // A11 is the extracted su2 matrix in 1-d array
+    double UMAG;                               // [ 0 1 ]
+    int i1,i2,i3,i4;                           // [ 2 3 ]   --> [0, 1, 2, 3]
+    
+    i1 = n1 + n1*NG;
+    i2 = (NG/2) + n2 + (NG/2 + n2)*NG;
+    i3 = NG/2 + n2 + n1*NG;
+    i4 = (NG/2 + n2)*NG + n1;
+    
+    _complex_add_star(F11, B11->c[i1], B11->c[i2]);
+    _complex_mulr(F11, 0.5, F11);
+    _complex_sub_star(F12, B11->c[i3], B11->c[i4]);
+    _complex_mulr(F12, 0.5, F12);
+    
+    _complex_mul_star(ztmp1, F11, F11);
+    _complex_mul_star(ztmp2, F12, F12);
+    UMAG = sqrt(creal(ztmp1)+creal(ztmp2));
+    UMAG = 1./UMAG;
+    
+    _complex_mulr(F11, UMAG, F11);
+    _complex_mulr(F12, UMAG, F12);
+    
+    _complex_star(A11[0], F11);
+    _complex_star(A11[1], F12);
+    _complex_mulr(A11[2], -1., F12);
+    _complex_mulr(A11[3],  1., F11);
+    
+    vmxsu2_tau(n1, n2, C11, A11);
+    vmxsu2_tau(n1, n2, B11, A11);
+}
+
+
+void vmxsu2_tau(int n1, int n2, suNgfull* A, complex B[4]){
+
+  /**
+   * @brief Applies a (A5)-type SU(2) transformation to a Sp(N) matrix.
+   *
+   * Performs the matrix update defined by a (A5)-type SU(2) matrix.
+   * A temporary copy is used to safely apply the transformation to four sub-blocks:
+   * (n1, n1), (n2, n2), (NG/2+n1, NG/2+n1), and (NG/2+n2, NG/2+n2).
+   * 
+   * @param n1 Index in upper block.
+   * @param n2 Index in lower block.
+   * @param A  Pointer to the Sp(N) matrix to be transformed.
+   * @param B  SU(2) matrix in row-major form.
+   */
+    
+    suNgfull C;
+    double complex ztmp1, ztmp2;
+    
+    _suNgfull_mul(C, 1., *A);
+    
+    for (int i=0; i<NG; i++){
+        
+        _complex_mul(ztmp1, A->c[i + n1*NG], B[0]);
+        _complex_mul(ztmp2, A->c[i +(NG/2+n2)*NG], B[2]);
+        _complex_add(C.c[i + n1*NG], ztmp1, ztmp2);
+        
+        _complex_mul(ztmp1, A->c[i + n2*NG], B[0]);
+        _complex_mul(ztmp2, A->c[i + (NG/2+n1)*NG], B[2]);
+        _complex_add(C.c[i + n2*NG], ztmp1, ztmp2);
+        
+        _complex_mul(ztmp1, A->c[i + n2*NG], B[1]);
+        _complex_mul(ztmp2, A->c[i + (NG/2+n1)*NG], B[3]);
+        _complex_add(C.c[i + (NG/2 + n1)*NG], ztmp1, ztmp2);
+        
+        _complex_mul(ztmp1, A->c[i + n1*NG], B[1]);
+        _complex_mul(ztmp2, A->c[i + (NG/2+n2)*NG], B[3]);
+        _complex_add(C.c[i + (NG/2 + n2)*NG], ztmp1, ztmp2);
+    }
+    _suNgfull_mul(*A, 1., C);
+}

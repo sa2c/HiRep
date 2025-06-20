@@ -761,3 +761,249 @@ void measure_formfactor_fixed(int ti, int tf, int dt, int nm, double *m, int n_m
   free_gfield_f(u_gauge_old);
   free_propagator_eo();
 }
+
+
+
+/* Updates for Wuppertal smearing by HH in 2020*/
+
+void create_smear_source_and_measure(spinor_field* source, spinor_field* prop, int t, int x, int y, int z, int nm, double* m, int n_mom, double epsilon_source, int Nsmear_source, int APE_N,int conf_num, char* label) {
+  /**
+   * @brief Creates a Wuppetal smeared source and measures the meson correlators with point sink.
+   *        The APE smearing on the gauge links are applied if `APE_N` is not 0.
+   *        The smearing function, `smearing_function`, is imbedded in `create_smeared_source_with_APE` and `create_smeared_source`.
+   *        See more details in that function.
+   * 
+   * @param source The source field, $q(x)$.
+   * @param prop The fermion propagator for measuring the correlators.
+   * @param epsilon_source The smearing parameter, $\epsilon$, at the source.
+   * @param Nsmear_source The number of iterations for the Wuppertal smearing at the source.
+   * @param APE_N The number of iteration for the APE smearing, determining using `create_smeared_source_with_APE` or `create_smeared_source`
+   * @param t The time slice where the source is located.
+   * @param x The location of the source.
+   * @param y The location of the source.
+   * @param z The location of the source.
+   * @param nm Number of the measuring fermion mass
+   * @param m fermion masses
+   */
+  for (int  k = 0;k<NF;++k){
+    if (APE_N != 0){
+      create_smeared_source_with_APE(source, t, x, y, z, k, epsilon_source, Nsmear_source);
+    } else{
+      create_smeared_source(source, t, x, y, z, k, epsilon_source, Nsmear_source);
+    }
+    calc_propagator(prop + 4*k, source , 4);//4 for spin components
+    if (n_mom>1){
+      measure_point_mesons_momenta(meson_correlators,prop+4*k, source, nm, t, n_mom);
+    } else{
+      measure_mesons(meson_correlators,prop+4*k, source, nm, t);
+    }
+  }
+      
+  sprintf(label, "source_N%d_sink_N%d",Nsmear_source, 0);
+  print_mesons(meson_correlators,1.,conf_num,nm,m,GLB_T,n_mom,label);
+      
+}
+
+
+void smear_sink_and_measure(spinor_field* prop, spinor_field* source, int nm, double* m, int t, int n_mom, int Nsmear_source, double epsilon_sink, int Nsmear_sink, int N_diff, int APE_N, int conf_num, char* label) {
+    /**
+     * @brief Performs the Wuppertal smearing at the sink and measures the meson correlators, with the smearing steps from 0 to `Nsmear_sink` with a step of `N_diff`.
+     *        The numbers of the smearing iterations at the sink are from 0 to `Nsmear_sink` with a step of `N_diff`.
+     *        The smearing function is imbedded in `smeared_propagator` and `smeared_propagator_with_APE`.
+     * 
+     * @note The APE smearing on the gauge links are applied if `APE_N` is not 0.
+     */
+    for (int N = 0; N<Nsmear_sink; N += N_diff){
+      for(int steps=0;steps<N_diff;steps++){
+            lprintf("SMEAR",0,"sink smearing with APE steps: %d\n ", steps+N+1);
+            if (APE_N != 0){
+              smeared_propagator_with_APE(prop, nm, epsilon_sink);
+            } else {
+              smeared_propagator(prop, nm, epsilon_sink);
+            }
+              
+          }
+          
+          for (int c=0;c<NF;++c){
+            if (n_mom>1){
+              measure_point_mesons_momenta(meson_correlators,prop+4*c, source, nm, t, n_mom);
+            } else {
+              measure_mesons(meson_correlators,prop+4*c, source, nm, t);
+            }
+          }
+          sprintf(label, "source_N%d_sink_N%d",Nsmear_source, N+N_diff);
+          print_mesons(meson_correlators,1.,conf_num,nm,m,GLB_T,n_mom,label);
+      }
+}
+
+
+void measure_smearing_source_sink(int t, int x, int y, int z, int nm, double* m, int n_mom, int nhits, int conf_num, double precision, double epsilon_source, int Nsmear_source_max, double epsilon_sink, int Nsmear_sink, double APE_epsilon, int APE_N, int N_diff){
+    /**
+     * @brief measures the meson correlators with smeared source and sink.
+     * It measures the meson correlators for all combinations of the source and sink smearing steps,
+     * [0, Nsmear_source_max] and [0, Nsmear_sink], respectively, with a separation of `N_diff`.
+     * 
+     * @note The APE smearing on the gauge links are applied if `APE_N` is not 0.
+     */
+    char label[20];    
+    if (APE_N != 0){
+        APE_smearing(APE_epsilon, APE_N);
+        represent_gauge_field_APE();
+    }
+
+    for (int Nsmear_source=0; Nsmear_source <= Nsmear_source_max; Nsmear_source += N_diff){
+
+      spinor_field* source = alloc_spinor_field_f(4,&glattice);
+      spinor_field* prop = alloc_spinor_field_f(4*nm*NF, &glattice);
+      init_propagator_eo(nm,m,precision);
+
+      create_smear_source_and_measure(source, prop, t, x, y, z, nm, m, n_mom, epsilon_source, Nsmear_source, APE_N, conf_num, label);
+
+      smear_sink_and_measure(prop, source, nm, m, t, n_mom, Nsmear_source, epsilon_sink, Nsmear_sink, N_diff, APE_N, conf_num, label);
+      
+      free_propagator_eo();
+      free_spinor_field_f(source);
+      free_spinor_field_f(prop);
+    }
+}
+
+void measure_smearing_ss(int t, int x, int y, int z, int nm, double* m, int n_mom, int nhits, int conf_num, double precision, double epsilon_source, int Nsmear_source, double epsilon_sink, int Nsmear_sink, double APE_epsilon, int APE_N, int N_diff){
+  /**
+   * @brief measures the meson correlators with smeared source and sink.
+   * It measures the meson correlators for a specifc source smearing steps, Nsmear_source,
+   * while the sink smearing steps are in the range of [0, Nsmear_sink] with a separation of `N_diff` .
+   * 
+   * @note The APE smearing on the gauge links are applied if `APE_N` is not 0.
+   */
+
+  char label[20];    
+  if (APE_N != 0){
+    APE_smearing(APE_epsilon, APE_N);
+    represent_gauge_field_APE();
+  }
+
+  spinor_field* source = alloc_spinor_field_f(4,&glattice);
+  spinor_field* prop = alloc_spinor_field_f(4*nm*NF, &glattice);
+  init_propagator_eo(nm,m,precision);
+
+  create_smear_source_and_measure(source, prop, t, x, y, z, nm, m, n_mom, epsilon_source, Nsmear_source, APE_N,  conf_num, label);
+
+  smear_sink_and_measure(prop, source, nm, m, t, n_mom, Nsmear_source, epsilon_sink, Nsmear_sink, N_diff, APE_N, conf_num, label);
+        
+  free_propagator_eo();
+  free_spinor_field_f(source);
+  free_spinor_field_f(prop);
+
+}
+
+
+// So far, only implement the measurement for mesons at rest
+// The sources are not localised on any lattice site but spread out
+/* Smearing for disconnected pieces for singlets (FZ Jan. 2024)*/
+void measure_spectrum_discon_semwall_smeared_single_inversion(int nm, double* m, int nhits, int conf_num, double precision, double epsilon_source, int Nsmear_source, double APE_epsilon, int APE_N, int N_diff){
+    
+    char label[32];
+    int k,beta;
+    spinor_field* source = alloc_spinor_field_f(4,&glattice);
+    spinor_field* prop = alloc_spinor_field_f(4*nm, &glattice);
+    
+    init_propagator_eo(nm,m,precision);
+    if (APE_N != 0){
+        APE_smearing(APE_epsilon, APE_N);
+        represent_gauge_field_APE();
+    }
+
+    lprintf("SMEAR",0,"source smearing with steps %d up to  %d\n ",N_diff,Nsmear_source);
+
+    for (k=0;k<nhits;++k){
+      // First create a new source
+      create_noise_source_equal_eo(source);
+      
+      // Then calculate the propagator without smearing
+      // (Do we need to swtich the type of the lattice?)
+      for(beta=0;beta<4;beta++) source[beta].type = &glat_even;
+      calc_propagator(prop,source,4); // 4 for spin dilution
+      for(beta=0;beta<4;beta++) source[beta].type = &glattice;
+
+      lprintf("MESON_MEASUREMENTS",0,"Stochastic source #%d\n",k);
+
+      for (int N = 0; N<=Nsmear_source; N += N_diff){
+        // Apply smearing now to the source
+        // Then apply smearing to the propagator
+
+        // For the first measurement we skip smearing
+        if (N != 0){
+          if (APE_N != 0){
+              for (int n=0;n<N_diff;n++){
+                lprintf("SMEAR",0,"smearing step %d\n", n+1);
+                smearing_function_volume_with_APE(source, epsilon_source);
+                smeared_propagator_volume_with_APE(prop, nm, epsilon_source);
+              }
+          }
+          else{
+              for (int n=0;n<N_diff;n++){
+                lprintf("SMEAR",0,"smearing step %d\n", n+1);
+                smearing_function_volume(source, epsilon_source);
+                smeared_propagator_volume(prop, nm, epsilon_source);
+              }
+          }
+        }
+
+        // The time slice is set to tau=0 since this is only needed for connected pieces
+        measure_mesons(discon_correlators,prop,source,nm,0);
+              
+        sprintf(label,"src %d DISCON_SEMWALL smear_N%d",k,N);
+        print_mesons(discon_correlators,1.,conf_num,nm,m,GLB_T,1,label);
+      }
+    } 
+       
+    free_propagator_eo();
+    free_spinor_field_f(source);
+    free_spinor_field_f(prop);
+}
+
+
+// So far, only implement the measurement for mesons at rest
+// The sources are not localised on any lattice site but spread out
+/* Smearing for disconnected pieces for singlets (FZ Jan. 2024)*/
+void measure_spectrum_discon_semwall_smeared(int nm, double* m, int nhits, int conf_num, double precision, double epsilon_source, int Nsmear_source, double APE_epsilon, int APE_N, int N_diff){
+    
+    char label[32];
+    int k,beta;
+    spinor_field* source = alloc_spinor_field_f(4,&glattice);
+    spinor_field* prop = alloc_spinor_field_f(4*nm, &glattice);
+    
+    init_propagator_eo(nm,m,precision);
+    if (APE_N != 0){
+        APE_smearing(APE_epsilon, APE_N);
+        represent_gauge_field_APE();
+    }
+
+    lprintf("SMEAR",0,"source smearing with steps %d up to  %d\n ",N_diff,Nsmear_source);
+
+    for (k=0;k<nhits;++k){
+      for (int N = 0; N<=Nsmear_source; N += N_diff){
+    
+        if (APE_N != 0){
+            create_noise_source_equal_eo_smeared_with_APE(source, epsilon_source, N);
+        }
+        else{
+            create_noise_source_equal_eo_smeared(source, epsilon_source, N);
+        }
+        // Do we need to swtich the type of the lattice?
+        for(beta=0;beta<4;beta++) source[beta].type = &glat_even;
+        calc_propagator(prop,source,4); // 4 for spin dilution
+        for(beta=0;beta<4;beta++) source[beta].type = &glattice;
+
+        // The time slice is set to tau=0 since this is only needed for connected pieces
+        measure_mesons(discon_correlators,prop,source,nm,0);
+              
+        sprintf(label,"src %d DISCON_SEMWALL smear_N%d",k,N);
+        print_mesons(discon_correlators,1.,conf_num,nm,m,GLB_T,1,label);
+      }
+    } 
+       
+    free_propagator_eo();
+    free_spinor_field_f(source);
+    free_spinor_field_f(prop);
+}

@@ -143,6 +143,15 @@ GLB_VAR(suNg_field_flt,*u_gauge_flt,=NULL);
 GLB_VAR(suNf_field,*u_gauge_f,=NULL);
 GLB_VAR(suNg_field,*u_gauge_s,=NULL);
 GLB_VAR(suNf_field_flt,*u_gauge_f_flt,=NULL);
+
+/*APE smearing*/
+GLB_VAR(suNg_field,*u_gauge_APE,=NULL);
+GLB_VAR(suNg_scalar_field,*u_scalar_APE,=NULL);
+GLB_VAR(suNg_field_flt,*u_gauge_APE_flt,=NULL);
+GLB_VAR(suNf_field,*u_gauge_APE_f,=NULL);
+GLB_VAR(suNg_field,*u_gauge_APE_s,=NULL);
+GLB_VAR(suNf_field_flt,*u_gauge_APE_f_flt,=NULL);
+
 #if defined(GAUGE_SPN) && defined(REPR_FUNDAMENTAL)
 GLB_VAR(suNffull_field,*cl_term,=NULL);
 GLB_VAR(suNffull_field,*cl_force,=NULL);
@@ -160,6 +169,14 @@ GLB_VAR(int,gauge_field_active,=0); // whether gauge field interactions is activ
 #define pu_gauge_flt(ix,mu) ((u_gauge_flt->ptr)+coord_to_index(ix,mu))
 #define pu_gauge_f(ix,mu) ((u_gauge_f->ptr)+coord_to_index(ix,mu))
 #define pu_gauge_f_flt(ix,mu) ((u_gauge_f_flt->ptr)+coord_to_index(ix,mu))
+
+/*APE smearing*/
+#define pu_gauge_APE(ix,mu) ((u_gauge_APE->ptr)+coord_to_index(ix,mu))
+#define pu_scalar_APE(ix) ((u_scalar_APE->ptr)+ix)
+#define pu_gauge_APE_flt(ix,mu) ((u_gauge_APE_flt->ptr)+coord_to_index(ix,mu))
+#define pu_gauge_APE_f(ix,mu) ((u_gauge_APE_f->ptr)+coord_to_index(ix,mu))
+#define pu_gauge_APE_f_flt(ix,mu) ((u_gauge_APE_f_flt->ptr)+coord_to_index(ix,mu))
+#define pu_gauge_tmp(ix,mu) ((u_gauge_tmp->ptr)+coord_to_index(ix,mu))
 
 /* input parameters */
 #include "input_par.h"

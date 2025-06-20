@@ -113,3 +113,21 @@ void assign_sd2s(spinor_field_flt *out, spinor_field *in)
     }
   }
 }
+
+/*APE smearing*/
+void assign_ud2u_APE_f(void)
+{
+  if(u_gauge_APE_f_flt!=NULL){
+    double *d;
+    float *f;
+  
+    d = (double*)(u_gauge_APE_f->ptr);
+    f = (float*)(u_gauge_APE_f_flt->ptr);
+
+_OMP_PRAGMA( _omp_parallel )
+_OMP_PRAGMA( _omp_for )
+    for(int i=0; i<4*glattice.gsize_gauge*(sizeof(suNf)/sizeof(double)); i++) {
+      *(f+i) = (float)(*(d+i));
+    }
+  }
+}

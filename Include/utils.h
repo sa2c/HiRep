@@ -44,6 +44,7 @@ void init_plaq_open_BCs(double *plaq_weight, double *rect_weight, double ct, dou
 
 void free_BCs();
 void apply_BCs_on_represented_gauge_field();
+void apply_BCs_on_represented_gauge_field_APE();
 void apply_BCs_on_fundamental_gauge_field();
 void apply_BCs_on_momentum_field(suNg_av_field *force);
 void apply_BCs_on_spinor_field(spinor_field *sp);
@@ -175,5 +176,16 @@ int reserve_wrk_space();
 int reserve_wrk_space_with_pointers(suNg_field **g_wrk_out, int **i_up_wrk_out, int **i_dn_wrk_out);
 void release_wrk_space(int id_release);
 void free_wrk_space();
+
+/* APE smearing */
+void APE_smearing(double smear_val, int Nsmear);
+void assign_ud2u_APE_f(void);
+#ifdef GAUGE_SPN
+void cooling_SPN(suNg* g_out, suNg* g_in, suNg* staple, int cooling);
+void subgrb(int i1col, int i2col, suNgfull* B11, suNgfull* C11);
+void vmxsu2(int i1, int i2, suNgfull* A, complex B[4]);
+void subgrb_tau(int n1, int n2, suNgfull* B11, suNgfull* C11);
+void vmxsu2_tau(int n1, int n2, suNgfull* A, complex B[4]);
+#endif
 
 #endif

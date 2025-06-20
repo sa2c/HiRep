@@ -62,6 +62,7 @@ typedef struct _input_mesons
   int fixed_point;
   int fixed_gfwall;
   int discon_semwall;
+  int discon_semwall_smeared;
   int discon_gfwall;
   int discon_volume;
   int def_gfwall;
@@ -74,13 +75,25 @@ typedef struct _input_mesons
   double csw;
   double rho_s;
   double rho_t;
+  int source_t;
+  int source_x;
+  int source_y;
+  int source_z;
+  int smearing_source_sink;
+  double smear_epsilon_source;
+  int smear_N_source;
+  double smear_epsilon_sink;
+  int smear_N_sink;
+  int smear_N_step;
+  int APE_N;
+  double APE_epsilon;
 
   //Currently only implemented for ff
   int nhits_hopping;  //Multiplies the number of hits in the fast part of the hopping parameter expansion
   int degree_hopping; // The degree of the hopping parameter expasion
 
   /* for the reading function */
-  input_record_t read[33];
+  input_record_t read[44];
 } input_mesons;
 
 #define init_input_mesons(varname)                                                                                \
@@ -101,6 +114,7 @@ typedef struct _input_mesons
       {"enable Dirichlet point", "mes:dirichlet_point = %d", INT_T, &(varname).fixed_point},                      \
       {"enable Dirichlet gfwall", "mes:dirichlet_gfwall = %d", INT_T, &(varname).fixed_gfwall},                   \
       {"enable discon semwall", "mes:discon_semwall = %d", INT_T, &(varname).discon_semwall},                     \
+      {"enable discon semwall with smearing", "mes:discon_semwall_smeared = %d",INT_T, &(varname).discon_semwall_smeared},\
       {"enable discon gfwall", "mes:discon_gfwall = %d", INT_T, &(varname).discon_gfwall},                        \
       {"enable discon volume", "mes:discon_volume = %d", INT_T, &(varname).discon_volume},                        \
       {"volume source dilution", "mes:dilution = %d", INT_T, &(varname).dilution},                                \
@@ -117,6 +131,18 @@ typedef struct _input_mesons
       {"hopping expansion degree", "mes:degree_hopping = %d", INT_T, &(varname).degree_hopping},                  \
       {"hopping expansion hits", "mes:nhits_hopping = %d", INT_T, &(varname).nhits_hopping},                      \
       {"Configuration list:", "mes:configlist = %s", STRING_T, &(varname).configlist},                            \
+      {"Smearing Source z", "mes:source_t = %d",INT_T, &(varname).source_t},                                      \
+      {"Smearing Source x", "mes:source_x = %d",INT_T, &(varname).source_x},                                      \
+      {"Smearing Source y", "mes:source_y = %d",INT_T, &(varname).source_y},                                      \
+      {"Smearing Source z", "mes:source_z = %d",INT_T, &(varname).source_z},                                      \
+      {"Smearing a lot at once", "mes:smearing_source_sink = %d",INT_T, &(varname).smearing_source_sink},         \
+      {"smearing source step size", "mes:smear_epsilon_source = %lf", DOUBLE_T, &(varname).smear_epsilon_source}, \
+      {"Number of smeared source steps", "mes:smear_N_source = %d",INT_T, &(varname).smear_N_source},             \
+      {"smearing sink step size", "mes:smear_epsilon_sink = %lf", DOUBLE_T, &(varname).smear_epsilon_sink},       \
+      {"Number of smeared sink steps", "mes:smear_N_sink = %d",INT_T, &(varname).smear_N_sink},                   \
+      {"Number of steps between smearing levels", "mes:smear_N_step = %d",INT_T, &(varname).smear_N_step},        \
+      {"Number of APE smearing steps", "mes:APE_N = %d",INT_T, &(varname).APE_N},                                 \
+      {"APE smearing step size", "mes:APE_epsilon = %lf",DOUBLE_T, &(varname).APE_epsilon},                       \
       {NULL, NULL, INT_T, NULL}                                                                                   \
     }                                                                                                             \
   }
@@ -207,6 +233,12 @@ int main(int argc, char *argv[])
   if (mes_var.def_point)
   {
     lprintf("MAIN", 0, "Point sources\n");
+  }
+  if (mes_var.APE_N != 0){
+      lprintf("MAIN",0,"APE smearing activate on Gaussian smearing\n");
+  }
+  if (mes_var.smearing_source_sink){
+    lprintf("MAIN",0,"Smear source to several Ns_sink\n");
   }
   if (mes_var.def_baryon)
   {
@@ -330,6 +362,9 @@ int main(int argc, char *argv[])
       {
         measure_spectrum_pt(tau, nm, m, mes_var.n_mom, i, mes_var.precision,DONTSTORE, NULL);
       }
+      if (mes_var.smearing_source_sink){
+        measure_smearing_source_sink(mes_var.source_t,mes_var.source_x,mes_var.source_y,mes_var.source_z,nm,m,mes_var.n_mom,mes_var.nhits_2pt,i,mes_var.precision,mes_var.smear_epsilon_source,mes_var.smear_N_source,mes_var.smear_epsilon_sink,mes_var.smear_N_sink, mes_var.APE_epsilon, mes_var.APE_N, mes_var.smear_N_step);
+      }
       if (mes_var.def_baryon)
       {
 #if NG == 3
@@ -369,6 +404,9 @@ int main(int argc, char *argv[])
       if (mes_var.discon_semwall)
       {
         measure_spectrum_discon_semwall(nm, m, mes_var.nhits_disc, i, mes_var.precision,DONTSTORE, NULL);
+      }
+      if (mes_var.discon_semwall_smeared){
+        measure_spectrum_discon_semwall_smeared(nm,m,mes_var.nhits_disc,i,mes_var.precision,mes_var.smear_epsilon_source,mes_var.smear_N_source, mes_var.APE_epsilon, mes_var.APE_N, mes_var.smear_N_step);
       }
       if (mes_var.discon_gfwall)
       {

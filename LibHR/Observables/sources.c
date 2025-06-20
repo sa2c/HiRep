@@ -25,6 +25,7 @@
 #include "gamma_spinor.h"
 #include "spin_matrix.h"
 #include "propagator.h"
+#include "representation.h"
 
 #define PI 3.141592653589793238462643383279502884197
 
@@ -88,6 +89,11 @@ static int random_tau()
 						source[spin](t,x) = \sum_{x%p == 0} \delta_{s spin} 1_color
 
                 z2_volume_source:                  source[spin](t,x) = Z(2) x Z(2) (no dilution)
+    smeared_source:
+              Wuppertal smeared source, see Eq. (9) in https://arxiv.org/pdf/1602.05525.pdf.
+              The involving gauge field is the original one.
+    smeared_source_with_APE:
+              Wuppertal smearing with APE smeared gauge field.
 \***************************************************************************/
 void create_point_source(spinor_field *source, int tau, int color)
 {
@@ -710,4 +716,407 @@ void zero_even_or_odd_site_spinorfield(spinor_field *source, int nspinor, int eo
             }
           }
         }
+}
+
+
+/* Updates for Wuppertal smearing by HH in 2020*/
+
+void smearing_function(spinor_field *source, int tau, double epsilon){
+  /**
+   * @brief Applies the Wuppertal smearing to the source field.
+   * The smearing is done in the spatial directions only, basing on Eq. (9) in https://arxiv.org/pdf/1602.05525.pdf:
+   * $\Phi q(x) = 1/(1+2d\epsilon)[ q(x) + \epsilon\sum_{\mu=1}^{3} U_{\mu}(x)q(x+\mu) ]$
+   * $\Phi$ is the smearing function, $q(x)$ is the source field, $U_{\mu}(x)$ is the link variable in the $\mu$ direction.
+   * $d = 3$ for spatial directions.
+   * 
+   * @param source -> the source field, $q(x)$.
+   * @param epsilon -> the smearing parameter, $\epsilon$.
+   * @param tau is the time slice where the source is located.
+   */
+    
+    int ix, x, y, z, ix_up, ix_right, ix_front, ix_left, ix_back, ix_down;
+    double norm_factor = 1./(1.+6.*epsilon);
+    suNf_spinor spinor_OG, spinor_smeared, spinor_tmp, spinor_right, spinor_left, spinor_front, spinor_back, spinor_up, spinor_down;
+    _spinor_zero_f(spinor_OG);_spinor_zero_f(spinor_tmp);_spinor_zero_f(spinor_right);_spinor_zero_f(spinor_left);
+    _spinor_zero_f(spinor_front);_spinor_zero_f(spinor_back);_spinor_zero_f(spinor_up);_spinor_zero_f(spinor_down);
+        
+    spinor_field* smeared_source = alloc_spinor_field_f(4,&glattice);
+    for (int beta=0;beta<4;++beta){
+        spinor_field_zero_f(&smeared_source[beta]);
+    }
+    
+    if(COORD[0]==tau/T){ // apply the smearing only on the time slice where the source is located.
+        for (x=0; x<X; x++) for (y=0; y<Y; y++) for (z=0; z<Z; z++){
+            
+            // assign the positions: a site (tau, x, y, z) and its neighbors in the spatial directions.
+            ix = ipt(tau - zerocoord[0], x,y,z);
+            ix_right = iup(ix,1);
+            ix_left  = idn(ix,1);
+            ix_front = iup(ix,2);
+            ix_back  = idn(ix,2);
+            ix_up    = iup(ix,3);
+            ix_down  = idn(ix,3);
+    
+    
+    
+            for (int spin=0;spin<4;spin++){
+                spinor_OG    = *_FIELD_AT(&source[spin], ix); // OG: original spinor field at (x,y,z).
+                spinor_right = *_FIELD_AT(&source[spin], ix_right); 
+                spinor_left  = *_FIELD_AT(&source[spin], ix_left);
+                spinor_front = *_FIELD_AT(&source[spin], ix_front);
+                spinor_back  = *_FIELD_AT(&source[spin], ix_back);
+                spinor_up    = *_FIELD_AT(&source[spin], ix_up);
+                spinor_down  = *_FIELD_AT(&source[spin], ix_down);
+                        
+        
+                _spinor_zero_f(spinor_smeared);
+
+                // mutiply the spinor fields with link variable in the spatial directions and add to the smearing field.
+                _suNf_multiply(spinor_tmp.c[spin], *pu_gauge_f(ix,1), spinor_right.c[spin]);
+                _vector_mul_add_assign_f(spinor_smeared.c[spin], epsilon*norm_factor, spinor_tmp.c[spin]);
+        
+                _suNf_inverse_multiply(spinor_tmp.c[spin], *pu_gauge_f(ix_left,1), spinor_left.c[spin]);
+                _vector_mul_add_assign_f(spinor_smeared.c[spin], epsilon*norm_factor, spinor_tmp.c[spin]);
+                    
+                _suNf_multiply(spinor_tmp.c[spin], *pu_gauge_f(ix,2), spinor_front.c[spin]);
+                _vector_mul_add_assign_f(spinor_smeared.c[spin], epsilon*norm_factor, spinor_tmp.c[spin]);
+        
+                _suNf_inverse_multiply(spinor_tmp.c[spin], *pu_gauge_f(ix_back,2), spinor_back.c[spin]);
+                _vector_mul_add_assign_f(spinor_smeared.c[spin], epsilon*norm_factor, spinor_tmp.c[spin]);
+                    
+                _suNf_multiply(spinor_tmp.c[spin], *pu_gauge_f(ix,3), spinor_up.c[spin]);
+                _vector_mul_add_assign_f(spinor_smeared.c[spin], epsilon*norm_factor, spinor_tmp.c[spin]);
+        
+                _suNf_inverse_multiply(spinor_tmp.c[spin], *pu_gauge_f(ix_down,3), spinor_down.c[spin]);
+                _vector_mul_add_assign_f(spinor_smeared.c[spin], epsilon*norm_factor, spinor_tmp.c[spin]);
+                    
+                _vector_mul_add_assign_f(spinor_smeared.c[spin], norm_factor, spinor_OG.c[spin]);
+        
+        _FIELD_AT(&smeared_source[spin], ix)->c[spin]  = spinor_smeared.c[spin];
+               
+        }
+    }
+    
+    // beta is the spinor index.
+    for (int beta=0;beta<4;++beta){
+        spinor_field_copy_f(source + beta, smeared_source +beta);
+    }
+    }
+    
+    for (int beta=0;beta<4;++beta){
+        start_sf_sendrecv(source + beta);
+        complete_sf_sendrecv(source + beta);
+    }
+    free_spinor_field_f(smeared_source);
+}
+
+void smearing_function_with_APE(spinor_field *source, int tau, double epsilon){
+  /**
+   * @brief Applies the Wuppertal smearing to the source field with APE smeared gauge field,
+   *        which is similar to the function `smearing_function` but changes the gauge field to the APE smeared one:
+   *        `pu_gauge_f` -> `pu_gauge_APE_f`
+   */
+    
+    int ix, x, y, z, ix_up, ix_right, ix_front, ix_left, ix_back, ix_down;
+    double norm_factor = 1./(1.+6.*epsilon);
+    suNf_spinor spinor_OG, spinor_smeared, spinor_tmp, spinor_right, spinor_left, spinor_front, spinor_back, spinor_up, spinor_down;
+    _spinor_zero_f(spinor_OG);_spinor_zero_f(spinor_tmp);_spinor_zero_f(spinor_right);_spinor_zero_f(spinor_left);
+    _spinor_zero_f(spinor_front);_spinor_zero_f(spinor_back);_spinor_zero_f(spinor_up);_spinor_zero_f(spinor_down);
+    
+    spinor_field* smeared_source = alloc_spinor_field_f(4, &glattice);
+    for (int beta=0;beta<4;++beta){
+        spinor_field_zero_f(&smeared_source[beta]);
+    }
+    
+    represent_gauge_field_APE();
+    if(COORD[0]==tau/T){
+    for (x=0; x<X; x++) for (y=0; y<Y; y++) for (z=0; z<Z; z++) {
+            
+        //lprintf("SMEAR",0,"smearing function at(%d,%d,%d,%d)\n",tau,x,y,z);
+        ix = ipt(tau - zerocoord[0], x, y, z);
+        ix_right = iup(ix,1);
+        ix_left  = idn(ix,1);
+        ix_front = iup(ix,2);
+        ix_back  = idn(ix,2);
+        ix_up    = iup(ix,3);
+        ix_down  = idn(ix,3);
+            
+        for (int spin=0;spin<4;spin++){
+            spinor_OG    = *_FIELD_AT(&source[spin], ix);
+            spinor_right = *_FIELD_AT(&source[spin], ix_right);
+            spinor_left  = *_FIELD_AT(&source[spin], ix_left);
+            spinor_front = *_FIELD_AT(&source[spin], ix_front);
+            spinor_back  = *_FIELD_AT(&source[spin], ix_back);
+            spinor_up    = *_FIELD_AT(&source[spin], ix_up);
+            spinor_down  = *_FIELD_AT(&source[spin], ix_down);
+                
+            _spinor_zero_f(spinor_smeared);
+            
+            _suNf_multiply(spinor_tmp.c[spin], *pu_gauge_APE_f(ix,1), spinor_right.c[spin]);
+            _vector_mul_add_assign_f(spinor_smeared.c[spin], epsilon*norm_factor, spinor_tmp.c[spin]);
+            _suNf_inverse_multiply(spinor_tmp.c[spin], *pu_gauge_APE_f(ix_left,1), spinor_left.c[spin]);
+            _vector_mul_add_assign_f(spinor_smeared.c[spin], epsilon*norm_factor, spinor_tmp.c[spin]);
+            
+            _suNf_multiply(spinor_tmp.c[spin], *pu_gauge_APE_f(ix,2), spinor_front.c[spin]);
+            _vector_mul_add_assign_f(spinor_smeared.c[spin], epsilon*norm_factor, spinor_tmp.c[spin]);
+            _suNf_inverse_multiply(spinor_tmp.c[spin], *pu_gauge_APE_f(ix_back,2), spinor_back.c[spin]);
+            _vector_mul_add_assign_f(spinor_smeared.c[spin], epsilon*norm_factor, spinor_tmp.c[spin]);
+            
+            _suNf_multiply(spinor_tmp.c[spin], *pu_gauge_APE_f(ix,3), spinor_up.c[spin]);
+            _vector_mul_add_assign_f(spinor_smeared.c[spin], epsilon*norm_factor, spinor_tmp.c[spin]);
+            _suNf_inverse_multiply(spinor_tmp.c[spin], *pu_gauge_APE_f(ix_down,3), spinor_down.c[spin]);
+            _vector_mul_add_assign_f(spinor_smeared.c[spin], epsilon*norm_factor, spinor_tmp.c[spin]);
+            
+            _vector_mul_add_assign_f(spinor_smeared.c[spin], norm_factor, spinor_OG.c[spin]);
+                
+            *_FIELD_AT(&smeared_source[spin], ix)  = spinor_smeared;
+        }
+    }
+    for (int beta=0;beta<4;++beta){
+        spinor_field_copy_f(source + beta, smeared_source +beta);
+    }
+    }
+    
+    for (int beta=0;beta<4;++beta){
+        start_sf_sendrecv(source + beta);
+        complete_sf_sendrecv(source + beta);
+    }
+    free_spinor_field_f(smeared_source);
+}
+
+void create_smeared_source(spinor_field *source, int t, int x, int y, int z, int color, double epsilon, int Nsmear){
+  /**
+   * @brief Creates a smeared source field at a given position (t,x,y,z) with a given color by applying
+   *        the Wuppertal smearing function on a point source based on Eq. (9) in https://arxiv.org/pdf/1602.05525.pdf.
+   *        
+   * @param t The time slice where the source is located.
+   * @param x The location of the source.
+   * @param y The location of the source.
+   * @param z The location of the source.
+   * @param Nsmear is the iteration number at the source
+   * @param epsilon is the step size, $\epsilon$ in the reference.
+   * 
+   * @note The gauge field is the original one.
+   */
+    
+    int beta;
+    
+    for (beta=0;beta<4;++beta){
+        spinor_field_zero_f(&source[beta]);
+    }
+    
+    create_point_source_loc(source, t, x, y, z, color);
+    
+    lprintf("SMEAR",0,"Smeared Source at (%d,%d,%d,%d) with APE smearing \n",t, x,y,z);
+    lprintf("SMEAR",0,"source smearing epsilon = %f iterations: \n", epsilon);
+    
+    for (int n=0;n<Nsmear;n++){
+        lprintf("SMEAR",0,"%d...", n+1);
+        smearing_function(source, t, epsilon);
+    }
+}
+
+void create_smeared_source_with_APE(spinor_field *source, int t, int x, int y, int z, int color, double epsilon, int Nsmear){
+  /**
+   * @brief Creates a smeared source field at a given position (t,x,y,z) with a given color by applying
+   *        the Wuppertal smearing function on a point source based on Eq. (9) in https://arxiv.org/pdf/1602.05525.pdf.
+   *        
+   * @param t The time slice where the source is located.
+   * @param x The location of the source.
+   * @param y The location of the source.
+   * @param z The location of the source.
+   * @param Nsmear is the iteration number at the source
+   * @param epsilon is the step size, $\epsilon$ in the reference.
+   * 
+   * @note The gauge field is the APE smeared one.
+   */
+    int beta;
+    
+    for (beta=0;beta<4;++beta){
+        spinor_field_zero_f(&source[beta]);
+    }
+    
+    create_point_source_loc(source, t, x, y, z, color);
+    
+    lprintf("SMEAR",0,"Smeared Source at (%d,%d,%d,%d) with APE smearing \n",t, x,y,z);
+    lprintf("SMEAR",0,"source smearing epsilon = %f iterations: \n", epsilon);
+    
+    for (int n=0;n<Nsmear;n++){
+        lprintf("SMEAR",0,"%d...", n+1);
+        smearing_function_with_APE(source, t, epsilon);
+    }
+}
+
+// FZ 2024: Add extra smeared sources for disconnected pieces
+void smearing_function_volume(spinor_field *source, double epsilon){
+    
+    int ix, t, x, y, z, ix_up, ix_right, ix_front, ix_left, ix_back, ix_down;
+    double norm_factor = 1./(1.+6.*epsilon);
+    suNf_spinor spinor_OG, spinor_smeared, spinor_tmp, spinor_right, spinor_left, spinor_front, spinor_back, spinor_up, spinor_down;
+    _spinor_zero_f(spinor_OG);_spinor_zero_f(spinor_tmp);_spinor_zero_f(spinor_right);_spinor_zero_f(spinor_left);
+    _spinor_zero_f(spinor_front);_spinor_zero_f(spinor_back);_spinor_zero_f(spinor_up);_spinor_zero_f(spinor_down);
+        
+    spinor_field* smeared_source = alloc_spinor_field_f(4,&glattice);
+    for (int beta=0;beta<4;++beta){
+        spinor_field_zero_f(&smeared_source[beta]);
+    }
+    
+    for (t=0; t<T; t++) for (x=0; x<X; x++) for (y=0; y<Y; y++) for (z=0; z<Z; z++){
+        
+        ix = ipt(t, x,y,z);
+        ix_right = iup(ix,1);
+        ix_left  = idn(ix,1);
+        ix_front = iup(ix,2);
+        ix_back  = idn(ix,2);
+        ix_up    = iup(ix,3);
+        ix_down  = idn(ix,3);
+
+        for (int spin=0;spin<4;spin++){
+            spinor_OG    = *_FIELD_AT(&source[spin], ix);
+            spinor_right = *_FIELD_AT(&source[spin], ix_right);
+            spinor_left  = *_FIELD_AT(&source[spin], ix_left);
+            spinor_front = *_FIELD_AT(&source[spin], ix_front);
+            spinor_back  = *_FIELD_AT(&source[spin], ix_back);
+            spinor_up    = *_FIELD_AT(&source[spin], ix_up);
+            spinor_down  = *_FIELD_AT(&source[spin], ix_down);
+                    
+    
+            _spinor_zero_f(spinor_smeared);
+    
+            _suNf_multiply(spinor_tmp.c[spin], *pu_gauge_f(ix,1), spinor_right.c[spin]);
+            _vector_mul_add_assign_f(spinor_smeared.c[spin], epsilon*norm_factor, spinor_tmp.c[spin]);
+    
+            _suNf_inverse_multiply(spinor_tmp.c[spin], *pu_gauge_f(ix_left,1), spinor_left.c[spin]);
+            _vector_mul_add_assign_f(spinor_smeared.c[spin], epsilon*norm_factor, spinor_tmp.c[spin]);
+                
+            _suNf_multiply(spinor_tmp.c[spin], *pu_gauge_f(ix,2), spinor_front.c[spin]);
+            _vector_mul_add_assign_f(spinor_smeared.c[spin], epsilon*norm_factor, spinor_tmp.c[spin]);
+    
+            _suNf_inverse_multiply(spinor_tmp.c[spin], *pu_gauge_f(ix_back,2), spinor_back.c[spin]);
+            _vector_mul_add_assign_f(spinor_smeared.c[spin], epsilon*norm_factor, spinor_tmp.c[spin]);
+                
+            _suNf_multiply(spinor_tmp.c[spin], *pu_gauge_f(ix,3), spinor_up.c[spin]);
+            _vector_mul_add_assign_f(spinor_smeared.c[spin], epsilon*norm_factor, spinor_tmp.c[spin]);
+    
+            _suNf_inverse_multiply(spinor_tmp.c[spin], *pu_gauge_f(ix_down,3), spinor_down.c[spin]);
+            _vector_mul_add_assign_f(spinor_smeared.c[spin], epsilon*norm_factor, spinor_tmp.c[spin]);
+                
+            _vector_mul_add_assign_f(spinor_smeared.c[spin], norm_factor, spinor_OG.c[spin]);
+    
+            _FIELD_AT(&smeared_source[spin], ix)->c[spin]  = spinor_smeared.c[spin];       
+        }
+    }
+    
+    for (int beta=0;beta<4;++beta){
+        spinor_field_copy_f(source + beta, smeared_source +beta);
+    }
+    
+    
+    for (int beta=0;beta<4;++beta){
+        start_sf_sendrecv(source + beta);
+        complete_sf_sendrecv(source + beta);
+    }
+    free_spinor_field_f(smeared_source);
+}
+
+void smearing_function_volume_with_APE(spinor_field *source, double epsilon){
+    
+    int ix, t, x, y, z, ix_up, ix_right, ix_front, ix_left, ix_back, ix_down;
+    double norm_factor = 1./(1.+6.*epsilon);
+    suNf_spinor spinor_OG, spinor_smeared, spinor_tmp, spinor_right, spinor_left, spinor_front, spinor_back, spinor_up, spinor_down;
+    _spinor_zero_f(spinor_OG);_spinor_zero_f(spinor_tmp);_spinor_zero_f(spinor_right);_spinor_zero_f(spinor_left);
+    _spinor_zero_f(spinor_front);_spinor_zero_f(spinor_back);_spinor_zero_f(spinor_up);_spinor_zero_f(spinor_down);
+    
+    spinor_field* smeared_source = alloc_spinor_field_f(4, &glattice);
+    for (int beta=0;beta<4;++beta){
+        spinor_field_zero_f(&smeared_source[beta]);
+    }
+    
+    represent_gauge_field_APE();
+
+    for (t=0; t<T; t++) for (x=0; x<X; x++) for (y=0; y<Y; y++) for (z=0; z<Z; z++) {
+            
+        ix = ipt(t, x, y, z);
+        ix_right = iup(ix,1);
+        ix_left  = idn(ix,1);
+        ix_front = iup(ix,2);
+        ix_back  = idn(ix,2);
+        ix_up    = iup(ix,3);
+        ix_down  = idn(ix,3);
+            
+        for (int spin=0;spin<4;spin++){
+            spinor_OG    = *_FIELD_AT(&source[spin], ix);
+            spinor_right = *_FIELD_AT(&source[spin], ix_right);
+            spinor_left  = *_FIELD_AT(&source[spin], ix_left);
+            spinor_front = *_FIELD_AT(&source[spin], ix_front);
+            spinor_back  = *_FIELD_AT(&source[spin], ix_back);
+            spinor_up    = *_FIELD_AT(&source[spin], ix_up);
+            spinor_down  = *_FIELD_AT(&source[spin], ix_down);
+                
+            _spinor_zero_f(spinor_smeared);
+            
+            _suNf_multiply(spinor_tmp.c[spin], *pu_gauge_APE_f(ix,1), spinor_right.c[spin]);
+            _vector_mul_add_assign_f(spinor_smeared.c[spin], epsilon*norm_factor, spinor_tmp.c[spin]);
+            _suNf_inverse_multiply(spinor_tmp.c[spin], *pu_gauge_APE_f(ix_left,1), spinor_left.c[spin]);
+            _vector_mul_add_assign_f(spinor_smeared.c[spin], epsilon*norm_factor, spinor_tmp.c[spin]);
+            
+            _suNf_multiply(spinor_tmp.c[spin], *pu_gauge_APE_f(ix,2), spinor_front.c[spin]);
+            _vector_mul_add_assign_f(spinor_smeared.c[spin], epsilon*norm_factor, spinor_tmp.c[spin]);
+            _suNf_inverse_multiply(spinor_tmp.c[spin], *pu_gauge_APE_f(ix_back,2), spinor_back.c[spin]);
+            _vector_mul_add_assign_f(spinor_smeared.c[spin], epsilon*norm_factor, spinor_tmp.c[spin]);
+            
+            _suNf_multiply(spinor_tmp.c[spin], *pu_gauge_APE_f(ix,3), spinor_up.c[spin]);
+            _vector_mul_add_assign_f(spinor_smeared.c[spin], epsilon*norm_factor, spinor_tmp.c[spin]);
+            _suNf_inverse_multiply(spinor_tmp.c[spin], *pu_gauge_APE_f(ix_down,3), spinor_down.c[spin]);
+            _vector_mul_add_assign_f(spinor_smeared.c[spin], epsilon*norm_factor, spinor_tmp.c[spin]);
+            
+            _vector_mul_add_assign_f(spinor_smeared.c[spin], norm_factor, spinor_OG.c[spin]);
+                
+            *_FIELD_AT(&smeared_source[spin], ix)  = spinor_smeared;
+        }
+    }
+    for (int beta=0;beta<4;++beta){
+        spinor_field_copy_f(source + beta, smeared_source +beta);
+    }
+    
+    for (int beta=0;beta<4;++beta){
+        start_sf_sendrecv(source + beta);
+        complete_sf_sendrecv(source + beta);
+    }
+    free_spinor_field_f(smeared_source);
+}
+
+void create_noise_source_equal_eo_smeared_with_APE(spinor_field *source, double epsilon, int Nsmear){
+    
+    int beta;
+    for (beta=0;beta<4;++beta){
+        spinor_field_zero_f(&source[beta]);
+    }
+    
+    create_noise_source_equal_eo(source);
+    
+    lprintf("SMEAR",0,"Smeared noisy volume source with APE smearing \n");
+    lprintf("SMEAR",0,"source smearing epsilon = %f iterations: \n", epsilon);
+    
+    for (int n=0;n<Nsmear;n++){
+        lprintf("SMEAR",0,"%d...", n+1);
+        smearing_function_volume_with_APE(source, epsilon);
+    }
+}
+void create_noise_source_equal_eo_smeared(spinor_field *source, double epsilon, int Nsmear){
+    
+    int beta;
+    for (beta=0;beta<4;++beta){
+        spinor_field_zero_f(&source[beta]);
+    }
+
+    create_noise_source_equal_eo(source);
+    
+    lprintf("SMEAR",0,"Smeared noisy volume source \n");
+    lprintf("SMEAR",0,"source smearing epsilon = %f iterations: \n", epsilon);
+    
+    for (int n=0;n<Nsmear;n++){
+        lprintf("SMEAR",0,"%d...", n+1);
+        smearing_function_volume(source, epsilon);
+    }
 }

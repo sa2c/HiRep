@@ -296,4 +296,32 @@ void init_triplet_discon_correlators();
 
 void ff_observables();
 
+//APE smearing
+double plaq_APE(int ix,int mu,int nu);
+void cplaq_APE(complex *ret,int ix,int mu,int nu);
+double avr_spatial_plaquette_APE();
+void full_plaquette_APE();
+void polyakov_APE();
+
+/* source smearing*/
+void smearing_function(spinor_field *source, int tau, double epsilon);
+void smearing_function_with_APE(spinor_field *source, int tau, double epsilon);
+void smearing_function_volume(spinor_field *source, double epsilon);
+void smearing_function_volume_with_APE(spinor_field *source, double epsilon);
+void create_smeared_source(spinor_field *source, int t, int x, int y, int z, int color, double epsilon, int Nsmear);
+void create_smeared_source_with_APE(spinor_field *source, int t, int x, int y, int z, int color, double epsilon, int Nsmear);
+void create_noise_source_equal_eo_smeared_with_APE(spinor_field *source, double epsilon, int Nsmear);
+void create_noise_source_equal_eo_smeared(spinor_field *source, double epsilon, int Nsmear);
+
+/* Sink smearing*/
+void smeared_propagator(spinor_field* psi, int nm , double epsilon);
+void smeared_propagator_with_APE(spinor_field* psi, int nm , double epsilon);
+void smeared_propagator_volume(spinor_field* psi, int nm , double epsilon);
+void smeared_propagator_volume_with_APE(spinor_field* psi, int nm , double epsilon);
+
+/* Measurements*/
+void measure_smearing_source_sink(int t, int x, int y, int z, int nm, double* m, int n_mom, int nhits, int conf_num, double precision, double epsilon_source, int Nsmear_source_max, double epsilon_sink, int Nsmear_sink, double APE_epsilon, int APE_N, int N_diff);
+void measure_smearing_ss(int t, int x, int y, int z, int nm, double* m, int n_mom, int nhits, int conf_num, double precision, double epsilon_source, int Nsmear_source, double epsilon_sink, int Nsmear_sink, double APE_epsilon, int APE_N, int N_diff);
+
+
 #endif

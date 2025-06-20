@@ -337,6 +337,33 @@ void apply_BCs_on_clover_term(suNfc_field *cl)
 }
 #endif //defined(GAUGE_SPN) && defined(REPR_FUNDAMENTAL)
 
+static void sp_T_antiperiodic_BCs_APE();
+static void sp_X_antiperiodic_BCs_APE();
+static void sp_Y_antiperiodic_BCs_APE();
+static void sp_Z_antiperiodic_BCs_APE();
+/*static void sp_spatial_theta_BCs(double theta);*/
+static void chiSF_ds_BT_APE(double ds);
+
+void apply_BCs_on_represented_gauge_field_APE() {
+#ifdef BC_T_ANTIPERIODIC
+  sp_T_antiperiodic_BCs_APE();
+#endif
+#ifdef BC_X_ANTIPERIODIC
+  sp_X_antiperiodic_BCs_APE();
+#endif
+#ifdef BC_Y_ANTIPERIODIC
+  sp_Y_antiperiodic_BCs_APE();
+#endif
+#ifdef BC_Z_ANTIPERIODIC
+  sp_Z_antiperiodic_BCs_APE();
+#endif
+#ifdef ROTATED_SF
+#ifndef ALLOCATE_REPR_GAUGE_FIELD
+#error The represented gauge field must be allocated!!!
+#endif
+  chiSF_ds_BT_APE(BCs_pars.chiSF_boundary_improvement_ds);
+#endif
+}
 
 /***************************************************************************/
 /* BOUNDARY CONDITIONS TO BE APPLIED ON THE REPRESENTED GAUGE FIELD        */
@@ -816,6 +843,107 @@ static void gf_open_BCs()
   }
 }
 #endif
+/***************************************************************************/
+/* BOUNDARY CONDITIONS TO BE APPLIED ON THE REPRESENTED APE GAUGE FIELD        */
+/***************************************************************************/
+
+static void sp_T_antiperiodic_BCs_APE() {
+  if(COORD[0]==0) {
+    int index;
+    int ix,iy,iz;
+    suNf *u;
+    for (ix=0;ix<X_EXT;++ix) for (iy=0;iy<Y_EXT;++iy) for (iz=0;iz<Z_EXT;++iz){
+      index=ipt_ext(2*T_BORDER,ix,iy,iz);
+      if(index!=-1) {
+        u=pu_gauge_APE_f(index,0);
+        _suNf_minus(*u,*u);
+      }
+    }
+  }
+}
+
+static void sp_X_antiperiodic_BCs_APE() {
+  if(COORD[1]==0) {
+    int index;
+    int it,iy,iz;
+    suNf *u;
+    for (it=0;it<T_EXT;++it) for (iy=0;iy<Y_EXT;++iy) for (iz=0;iz<Z_EXT;++iz){
+      index=ipt_ext(it,2*X_BORDER,iy,iz);
+      if(index!=-1) {
+        u=pu_gauge_APE_f(index,1);
+        _suNf_minus(*u,*u);
+      }
+    }
+  }
+}
+
+static void sp_Y_antiperiodic_BCs_APE() {
+  if(COORD[2]==0) {
+    int index;
+    int ix,it,iz;
+    suNf *u;
+    for (it=0;it<T_EXT;++it) for (ix=0;ix<X_EXT;++ix) for (iz=0;iz<Z_EXT;++iz){
+      index=ipt_ext(it,ix,2*Y_BORDER,iz);
+      if(index!=-1) {
+        u=pu_gauge_APE_f(index,2);
+        _suNf_minus(*u,*u);
+      }
+    }
+  }
+}
+
+static void sp_Z_antiperiodic_BCs_APE() {
+  if(COORD[3]==0) {
+    int index;
+    int ix,iy,it;
+    suNf *u;
+    for (it=0;it<T_EXT;++it) for (ix=0;ix<X_EXT;++ix) for (iy=0;iy<Y_EXT;++iy){
+      index=ipt_ext(it,ix,iy,2*Z_BORDER);
+      if(index!=-1) {
+        u=pu_gauge_APE_f(index,3);
+        _suNf_minus(*u,*u);
+      }
+    }
+  }
+}
+
+
+static void chiSF_ds_BT_APE(double ds) {
+  if(COORD[0] == 0) {
+    int index;
+    int ix,iy,iz;
+    suNf *u;
+    for (ix=0;ix<X_EXT;++ix) for (iy=0;iy<Y_EXT;++iy) for (iz=0;iz<Z_EXT;++iz){
+      index=ipt_ext(T_BORDER+1,ix,iy,iz);
+      if(index!=-1) {
+        u=pu_gauge_APE_f(index,1);
+        _suNf_mul(*u,ds,*u);
+        u=pu_gauge_APE_f(index,2);
+        _suNf_mul(*u,ds,*u);
+        u=pu_gauge_APE_f(index,3);
+        _suNf_mul(*u,ds,*u);
+      }
+    }
+  }
+  if(COORD[0] == NP_T-1) {
+    int index;
+    int ix,iy,iz;
+    suNf *u;
+    for (ix=0;ix<X_EXT;++ix) for (iy=0;iy<Y_EXT;++iy) for (iz=0;iz<Z_EXT;++iz){
+      index=ipt_ext(T+T_BORDER-1,ix,iy,iz);
+      if(index!=-1) {
+        u=pu_gauge_APE_f(index,1);
+        _suNf_mul(*u,ds,*u);
+        u=pu_gauge_APE_f(index,2);
+        _suNf_mul(*u,ds,*u);
+        u=pu_gauge_APE_f(index,3);
+        _suNf_mul(*u,ds,*u);
+      }
+    }
+  }
+}
+
+
 
 /***************************************************************************/
 /* BOUNDARY CONDITIONS TO BE APPLIED ON THE MOMENTUM FIELDS                */

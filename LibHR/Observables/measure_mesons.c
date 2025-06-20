@@ -623,3 +623,406 @@ void print_mesons(meson_observable *mo, double norm, int conf, int nm, double *m
   print_corr(mo, lt, conf, nm, mass, label, n_mom);
   zero_corrs(mo);
 }
+
+
+/* Wuppertal smearing*/
+
+void smeared_propagator(spinor_field* psi, int nm , double epsilon){
+    /**
+     * @brief Smears the propagator field `psi` with the Wuppertal smearingwith parameter `epsilon` and one iteration, without APE smearing.
+     * The smearing function is defined as Eq. (9) in https://arxiv.org/pdf/1602.05525.pdf.
+     * See also disucssion in the paragraph below Eq. (21) in the same paper.
+     * 
+     * @param psi The propagator field to be smeared, $S$ in the paper.
+     * @param nm The number of masses
+     * @param epsilon The smearing step size, $\epsilon$ in Eq. (9).
+     */
+
+    int i,t, x, y, z, ix, ix_up, ix_right, ix_front, ix_left, ix_back, ix_down;
+    double norm_factor = 1./(1.+6.*epsilon);
+    suNf_propagator sp_OG, sp_smeared, sp_tmp, sp_right, sp_left, sp_front, sp_back, sp_up, sp_down;
+    _propagator_zero(sp_smeared);
+    
+    spinor_field* smeared_psi = alloc_spinor_field_f(4*nm*NF,&glattice);
+    
+    for(i=0; i<nm; i++) {
+        for (t=0; t<T; t++) {
+            for (x=0; x<X; x++) for (y=0; y<Y; y++) for (z=0; z<Z; z++) {
+                
+                ix=ipt(t,x,y,z);
+                ix_right = iup(ix,1);
+                ix_left  = idn(ix,1);
+                ix_front = iup(ix,2);
+                ix_back  = idn(ix,2);
+                ix_up    = iup(ix,3);
+                ix_down  = idn(ix,3);
+                
+                for (int a=0;a<NF;++a){
+                    for (int beta=0;beta<4;beta++){
+                        _propagator_assign(sp_OG, *_FIELD_AT(&psi[a*4*nm+beta*nm+i],ix),a,beta);
+                        _propagator_assign(sp_right, *_FIELD_AT(&psi[a*4*nm+beta*nm+i],ix_right),a,beta);
+                        _propagator_assign(sp_left, *_FIELD_AT(&psi[a*4*nm+beta*nm+i],ix_left),a,beta);
+                        _propagator_assign(sp_front, *_FIELD_AT(&psi[a*4*nm+beta*nm+i],ix_front),a,beta);
+                        _propagator_assign(sp_back, *_FIELD_AT(&psi[a*4*nm+beta*nm+i],ix_back),a,beta);
+                        _propagator_assign(sp_up, *_FIELD_AT(&psi[a*4*nm+beta*nm+i],ix_up),a,beta);
+                        _propagator_assign(sp_down, *_FIELD_AT(&psi[a*4*nm+beta*nm+i],ix_down),a,beta);
+                    }
+                }
+                
+                _propagator_zero(sp_smeared);
+                _propagator_mul_assign(sp_OG, norm_factor);
+                _propagator_add(sp_smeared,sp_smeared, sp_OG);
+
+                _suNf_prop_multiply(sp_tmp, *pu_gauge_f(ix,1), sp_right);
+                _propagator_mul_assign(sp_tmp, epsilon*norm_factor);
+                _propagator_add(sp_smeared,sp_smeared, sp_tmp);
+    
+                _suNf_inverse_prop_multiply(sp_tmp, *pu_gauge_f(ix_left,1), sp_left);
+                _propagator_mul_assign(sp_tmp, epsilon*norm_factor);
+                _propagator_add(sp_smeared,sp_smeared, sp_tmp);
+                
+                _suNf_prop_multiply(sp_tmp, *pu_gauge_f(ix,2), sp_front);
+                _propagator_mul_assign(sp_tmp, epsilon*norm_factor);
+                _propagator_add(sp_smeared,sp_smeared, sp_tmp);
+                
+                _suNf_inverse_prop_multiply(sp_tmp, *pu_gauge_f(ix_back,2), sp_back);
+                _propagator_mul_assign(sp_tmp, epsilon*norm_factor);
+                _propagator_add(sp_smeared,sp_smeared, sp_tmp);
+                
+                _suNf_prop_multiply(sp_tmp, *pu_gauge_f(ix,3), sp_up);
+                _propagator_mul_assign(sp_tmp, epsilon*norm_factor);
+                _propagator_add(sp_smeared,sp_smeared, sp_tmp);
+                
+                _suNf_inverse_prop_multiply(sp_tmp, *pu_gauge_f(ix_down,3), sp_down);
+                _propagator_mul_assign(sp_tmp, epsilon*norm_factor);
+                _propagator_add(sp_smeared,sp_smeared, sp_tmp);
+                
+                for (int a=0;a<NF;a++) for (int b=0;b<NF;b++){
+                    for (int alpha=0;alpha<4;alpha++) for (int beta=0;beta<4;beta++){
+                        
+                        _FIELD_AT(&smeared_psi[a*4*nm+beta*nm+i],ix)->c[alpha].c[b] = sp_smeared.c[b].c[alpha].c[beta].c[a];
+                    
+                    }
+                }
+               
+            }
+        }
+    }
+    for (int i=0;i<4*nm*NF;i++){
+        spinor_field_copy_f(psi + i, smeared_psi  + i);
+    }
+    for (int i=0;i<4*nm*NF;i++){
+        start_sf_sendrecv(psi + i);
+        complete_sf_sendrecv(psi + i);
+    }
+    free_spinor_field_f(smeared_psi);
+}
+
+void smeared_propagator_with_APE(spinor_field* psi, int nm , double epsilon){
+  /**
+     * @brief Smears the propagator field `psi` with the Wuppertal smearing with parameter `epsilon` and one iteration.
+     * The smearing function is defined as Eq. (9) in https://arxiv.org/pdf/1602.05525.pdf.
+     * See also disucssion in the paragraph below Eq. (21) in the same paper.
+     * 
+     * @param psi The propagator field to be smeared, $S$ in the paper.
+     * @param nm The number of masses
+     * @param epsilon The smearing step size, $\epsilon$ in Eq. (9).
+     * 
+     * The gauge field is smeared with APE smearing before the Wuppertal smearing of the propagator field.
+     */
+
+    
+    int i,t, x, y, z, ix, ix_up, ix_right, ix_front, ix_left, ix_back, ix_down;
+    double norm_factor = 1./(1.+6.*epsilon);
+    suNf_propagator sp_OG, sp_smeared, sp_tmp, sp_right, sp_left, sp_front, sp_back, sp_up, sp_down;
+    _propagator_zero(sp_smeared);
+    
+    spinor_field* smeared_psi = alloc_spinor_field_f(4*nm*NF, &glattice);
+    
+    for(i=0; i<nm; i++) {
+        for (t=0; t<T; t++) {
+            for (x=0; x<X; x++) for (y=0; y<Y; y++) for (z=0; z<Z; z++) {
+                
+                ix=ipt(t,x,y,z);
+                ix_right = iup(ix,1);
+                ix_left  = idn(ix,1);
+                ix_front = iup(ix,2);
+                ix_back  = idn(ix,2);
+                ix_up    = iup(ix,3);
+                ix_down  = idn(ix,3);
+                
+                for (int a=0;a<NF;++a){
+                    for (int beta=0;beta<4;beta++){
+                        _propagator_assign(sp_OG, *_FIELD_AT(&psi[a*4*nm+beta*nm+i],ix),a,beta);
+                        _propagator_assign(sp_right, *_FIELD_AT(&psi[a*4*nm+beta*nm+i],ix_right),a,beta);
+                        _propagator_assign(sp_left, *_FIELD_AT(&psi[a*4*nm+beta*nm+i],ix_left),a,beta);
+                        _propagator_assign(sp_front, *_FIELD_AT(&psi[a*4*nm+beta*nm+i],ix_front),a,beta);
+                        _propagator_assign(sp_back, *_FIELD_AT(&psi[a*4*nm+beta*nm+i],ix_back),a,beta);
+                        _propagator_assign(sp_up, *_FIELD_AT(&psi[a*4*nm+beta*nm+i],ix_up),a,beta);
+                        _propagator_assign(sp_down, *_FIELD_AT(&psi[a*4*nm+beta*nm+i],ix_down),a,beta);
+                    }
+                }
+                
+                _propagator_zero(sp_smeared);
+                _propagator_mul_assign(sp_OG, norm_factor);
+                _propagator_add(sp_smeared,sp_smeared, sp_OG);
+
+                _suNf_prop_multiply(sp_tmp, *pu_gauge_APE_f(ix,1), sp_right);
+                _propagator_mul_assign(sp_tmp, epsilon*norm_factor);
+                _propagator_add(sp_smeared,sp_smeared, sp_tmp);
+    
+                _suNf_inverse_prop_multiply(sp_tmp, *pu_gauge_APE_f(ix_left,1), sp_left);
+                _propagator_mul_assign(sp_tmp, epsilon*norm_factor);
+                _propagator_add(sp_smeared,sp_smeared, sp_tmp);
+                
+                _suNf_prop_multiply(sp_tmp, *pu_gauge_APE_f(ix,2), sp_front);
+                _propagator_mul_assign(sp_tmp, epsilon*norm_factor);
+                _propagator_add(sp_smeared,sp_smeared, sp_tmp);
+                
+                _suNf_inverse_prop_multiply(sp_tmp, *pu_gauge_APE_f(ix_back,2), sp_back);
+                _propagator_mul_assign(sp_tmp, epsilon*norm_factor);
+                _propagator_add(sp_smeared,sp_smeared, sp_tmp);
+                
+                _suNf_prop_multiply(sp_tmp, *pu_gauge_APE_f(ix,3), sp_up);
+                _propagator_mul_assign(sp_tmp, epsilon*norm_factor);
+                _propagator_add(sp_smeared,sp_smeared, sp_tmp);
+                
+                _suNf_inverse_prop_multiply(sp_tmp, *pu_gauge_APE_f(ix_down,3), sp_down);
+                _propagator_mul_assign(sp_tmp, epsilon*norm_factor);
+                _propagator_add(sp_smeared,sp_smeared, sp_tmp);
+                
+                //FILED_prop_assign(smeared_psi, sp_smeared, ix, i, nm);
+                
+                for (int a=0;a<NF;a++) for (int b=0;b<NF;b++){
+                    for (int alpha=0;alpha<4;alpha++) for (int beta=0;beta<4;beta++){
+                        
+                        _FIELD_AT(&smeared_psi[a*4*nm+beta*nm+i],ix)->c[alpha].c[b] = sp_smeared.c[b].c[alpha].c[beta].c[a];
+                    
+                    }
+                }
+            }
+        }
+    }
+    for (int i=0;i<4*nm*NF;i++){
+        spinor_field_copy_f(psi + i, smeared_psi  + i);
+    }
+    for (int i=0;i<4*nm*NF;i++){
+        start_sf_sendrecv(psi + i);
+        complete_sf_sendrecv(psi + i);
+    }
+    free_spinor_field_f(smeared_psi);
+}
+
+
+// FZ (2024): Smeared propagator with a single source
+void smeared_propagator_volume(spinor_field* psi, int nm , double epsilon){
+    int i,t, x, y, z, ix, ix_up, ix_right, ix_front, ix_left, ix_back, ix_down;
+    double norm_factor = 1./(1.+6.*epsilon);
+    suNf_spin_matrix sp_OG, sp_smeared, sp_tmp, sp_right, sp_left, sp_front, sp_back, sp_up, sp_down;
+    _spinmatrix_zero(sp_smeared);
+    
+    spinor_field* smeared_psi = alloc_spinor_field_f(4*nm,&glattice);
+    
+    for(i=0; i<nm; i++) {
+        for (t=0; t<T; t++) {
+            for (x=0; x<X; x++) for (y=0; y<Y; y++) for (z=0; z<Z; z++) {
+                
+                ix=ipt(t,x,y,z);
+                ix_right = iup(ix,1);
+                ix_left  = idn(ix,1);
+                ix_front = iup(ix,2);
+                ix_back  = idn(ix,2);
+                ix_up    = iup(ix,3);
+                ix_down  = idn(ix,3);
+                
+                // The code identified the rows of the spinmatrix as the spinors. I will copy this
+                // convention for this function.
+                for (int beta=0;beta<4;beta++){
+                    _spinmatrix_assign_row(sp_OG, *_FIELD_AT(&psi[beta*nm+i],ix),beta);
+                    _spinmatrix_assign_row(sp_right, *_FIELD_AT(&psi[beta*nm+i],ix_right),beta);
+                    _spinmatrix_assign_row(sp_left, *_FIELD_AT(&psi[beta*nm+i],ix_left),beta);
+                    _spinmatrix_assign_row(sp_front, *_FIELD_AT(&psi[beta*nm+i],ix_front),beta);
+                    _spinmatrix_assign_row(sp_back, *_FIELD_AT(&psi[beta*nm+i],ix_back),beta);
+                    _spinmatrix_assign_row(sp_up, *_FIELD_AT(&psi[beta*nm+i],ix_up),beta);
+                    _spinmatrix_assign_row(sp_down, *_FIELD_AT(&psi[beta*nm+i],ix_down),beta);
+                }
+                
+                _spinmatrix_zero(sp_smeared);
+
+                // No deicated function for a spin matrix esists. Loop over rows in the spinmatrix
+                // which are spinors and use that method.
+                for (int beta=0;beta<4;beta++){
+                  _spinor_mul_add_assign_f(sp_smeared.c[beta],norm_factor, sp_OG.c[beta]);
+                }
+
+                // For the multiplication with a colour matrix we need to loop over every entry in the
+                // spin matrix, i.e. two loops are needed. Assignment and addition can be done in the 
+                // outermost loop since deicated functions for spinors exist.
+                for (int beta=0; beta<4; beta++){
+                  for (int alpha=0; alpha<4; alpha++){
+                   _suNf_multiply(sp_tmp.c[beta].c[alpha], *pu_gauge_f(ix,1), sp_right.c[beta].c[alpha]);
+                  }
+                  _spinor_mul_add_assign_f(sp_smeared.c[beta],epsilon*norm_factor, sp_tmp.c[beta]);
+                }
+                
+                // Repeat the same approach for the inverse multiplication and smearing directions
+                for (int beta=0; beta<4; beta++){
+                  for (int alpha=0; alpha<4; alpha++){
+                   _suNf_inverse_multiply(sp_tmp.c[beta].c[alpha], *pu_gauge_f(ix_left,1), sp_left.c[beta].c[alpha]);
+                  }
+                  _spinor_mul_add_assign_f(sp_smeared.c[beta],epsilon*norm_factor, sp_tmp.c[beta]);
+                }
+
+                for (int beta=0; beta<4; beta++){
+                  for (int alpha=0; alpha<4; alpha++){
+                   _suNf_multiply(sp_tmp.c[beta].c[alpha], *pu_gauge_f(ix,2), sp_front.c[beta].c[alpha]);
+                  }
+                  _spinor_mul_add_assign_f(sp_smeared.c[beta],epsilon*norm_factor, sp_tmp.c[beta]);
+                }
+                
+                for (int beta=0; beta<4; beta++){
+                  for (int alpha=0; alpha<4; alpha++){
+                   _suNf_inverse_multiply(sp_tmp.c[beta].c[alpha], *pu_gauge_f(ix_back,2), sp_back.c[beta].c[alpha]);
+                  }
+                  _spinor_mul_add_assign_f(sp_smeared.c[beta],epsilon*norm_factor, sp_tmp.c[beta]);
+                }                
+
+                for (int beta=0; beta<4; beta++){
+                  for (int alpha=0; alpha<4; alpha++){
+                   _suNf_multiply(sp_tmp.c[beta].c[alpha], *pu_gauge_f(ix,3), sp_up.c[beta].c[alpha]);
+                  }
+                  _spinor_mul_add_assign_f(sp_smeared.c[beta],epsilon*norm_factor, sp_tmp.c[beta]);
+                }
+                
+                for (int beta=0; beta<4; beta++){
+                  for (int alpha=0; alpha<4; alpha++){
+                   _suNf_inverse_multiply(sp_tmp.c[beta].c[alpha], *pu_gauge_f(ix_down,3), sp_down.c[beta].c[alpha]);
+                  }
+                  _spinor_mul_add_assign_f(sp_smeared.c[beta],epsilon*norm_factor, sp_tmp.c[beta]);
+                }           
+                
+                for (int b=0;b<NF;b++){
+                    for (int alpha=0;alpha<4;alpha++) for (int beta=0;beta<4;beta++){
+                        _FIELD_AT(&smeared_psi[beta*nm+i],ix)->c[alpha].c[b] = sp_smeared.c[beta].c[alpha].c[b];
+                        _FIELD_AT(&smeared_psi[beta*nm+i],ix)->c[alpha].c[b] = sp_smeared.c[beta].c[alpha].c[b];
+                    }
+                }
+               
+            }
+        }
+    }
+    for (int i=0;i<4*nm;i++){
+        spinor_field_copy_f(psi + i, smeared_psi  + i);
+    }
+    for (int i=0;i<4*nm;i++){
+        start_sf_sendrecv(psi + i);
+        complete_sf_sendrecv(psi + i);
+    }
+    free_spinor_field_f(smeared_psi);
+}
+
+void smeared_propagator_volume_with_APE(spinor_field* psi, int nm , double epsilon){
+    int i,t, x, y, z, ix, ix_up, ix_right, ix_front, ix_left, ix_back, ix_down;
+    double norm_factor = 1./(1.+6.*epsilon);
+    suNf_spin_matrix sp_OG, sp_smeared, sp_tmp, sp_right, sp_left, sp_front, sp_back, sp_up, sp_down;
+    _spinmatrix_zero(sp_smeared);
+    
+    spinor_field* smeared_psi = alloc_spinor_field_f(4*nm,&glattice);
+    
+    for(i=0; i<nm; i++) {
+        for (t=0; t<T; t++) {
+            for (x=0; x<X; x++) for (y=0; y<Y; y++) for (z=0; z<Z; z++) {
+                
+                ix=ipt(t,x,y,z);
+                ix_right = iup(ix,1);
+                ix_left  = idn(ix,1);
+                ix_front = iup(ix,2);
+                ix_back  = idn(ix,2);
+                ix_up    = iup(ix,3);
+                ix_down  = idn(ix,3);
+                
+                // The code identified the rows of the spinmatrix as the spinors. I will copy this
+                // convention for this function.
+                for (int beta=0;beta<4;beta++){
+                    _spinmatrix_assign_row(sp_OG, *_FIELD_AT(&psi[beta*nm+i],ix),beta);
+                    _spinmatrix_assign_row(sp_right, *_FIELD_AT(&psi[beta*nm+i],ix_right),beta);
+                    _spinmatrix_assign_row(sp_left, *_FIELD_AT(&psi[beta*nm+i],ix_left),beta);
+                    _spinmatrix_assign_row(sp_front, *_FIELD_AT(&psi[beta*nm+i],ix_front),beta);
+                    _spinmatrix_assign_row(sp_back, *_FIELD_AT(&psi[beta*nm+i],ix_back),beta);
+                    _spinmatrix_assign_row(sp_up, *_FIELD_AT(&psi[beta*nm+i],ix_up),beta);
+                    _spinmatrix_assign_row(sp_down, *_FIELD_AT(&psi[beta*nm+i],ix_down),beta);
+                }
+                
+                _spinmatrix_zero(sp_smeared);
+
+                // No deicated function for a spin matrix esists. Loop over rows in the spinmatrix
+                // which are spinors and use that method.
+                for (int beta=0;beta<4;beta++){
+                  _spinor_mul_add_assign_f(sp_smeared.c[beta],norm_factor, sp_OG.c[beta]);
+                }
+
+                // For the multiplication with a colour matrix we need to loop over every entry in the
+                // spin matrix, i.e. two loops are needed. Assignment and addition can be done in the 
+                // outermost loop since deicated functions for spinors exist.
+                for (int beta=0; beta<4; beta++){
+                  for (int alpha=0; alpha<4; alpha++){
+                   _suNf_multiply(sp_tmp.c[beta].c[alpha], *pu_gauge_APE_f(ix,1), sp_right.c[beta].c[alpha]);
+                  }
+                  _spinor_mul_add_assign_f(sp_smeared.c[beta],epsilon*norm_factor, sp_tmp.c[beta]);
+                }
+                
+                // Repeat the same approach for the inverse multiplication and smearing directions
+                for (int beta=0; beta<4; beta++){
+                  for (int alpha=0; alpha<4; alpha++){
+                   _suNf_inverse_multiply(sp_tmp.c[beta].c[alpha], *pu_gauge_APE_f(ix_left,1), sp_left.c[beta].c[alpha]);
+                  }
+                  _spinor_mul_add_assign_f(sp_smeared.c[beta],epsilon*norm_factor, sp_tmp.c[beta]);
+                }
+
+                for (int beta=0; beta<4; beta++){
+                  for (int alpha=0; alpha<4; alpha++){
+                   _suNf_multiply(sp_tmp.c[beta].c[alpha], *pu_gauge_APE_f(ix,2), sp_front.c[beta].c[alpha]);
+                  }
+                  _spinor_mul_add_assign_f(sp_smeared.c[beta],epsilon*norm_factor, sp_tmp.c[beta]);
+                }
+                
+                for (int beta=0; beta<4; beta++){
+                  for (int alpha=0; alpha<4; alpha++){
+                   _suNf_inverse_multiply(sp_tmp.c[beta].c[alpha], *pu_gauge_APE_f(ix_back,2), sp_back.c[beta].c[alpha]);
+                  }
+                  _spinor_mul_add_assign_f(sp_smeared.c[beta],epsilon*norm_factor, sp_tmp.c[beta]);
+                }                
+
+                for (int beta=0; beta<4; beta++){
+                  for (int alpha=0; alpha<4; alpha++){
+                   _suNf_multiply(sp_tmp.c[beta].c[alpha], *pu_gauge_APE_f(ix,3), sp_up.c[beta].c[alpha]);
+                  }
+                  _spinor_mul_add_assign_f(sp_smeared.c[beta],epsilon*norm_factor, sp_tmp.c[beta]);
+                }
+                
+                for (int beta=0; beta<4; beta++){
+                  for (int alpha=0; alpha<4; alpha++){
+                   _suNf_inverse_multiply(sp_tmp.c[beta].c[alpha], *pu_gauge_APE_f(ix_down,3), sp_down.c[beta].c[alpha]);
+                  }
+                  _spinor_mul_add_assign_f(sp_smeared.c[beta],epsilon*norm_factor, sp_tmp.c[beta]);
+                }           
+                
+                for (int b=0;b<NF;b++){
+                    for (int alpha=0;alpha<4;alpha++) for (int beta=0;beta<4;beta++){
+                        _FIELD_AT(&smeared_psi[beta*nm+i],ix)->c[alpha].c[b] = sp_smeared.c[beta].c[alpha].c[b];
+                        _FIELD_AT(&smeared_psi[beta*nm+i],ix)->c[alpha].c[b] = sp_smeared.c[beta].c[alpha].c[b];
+                    }
+                }
+               
+            }
+        }
+    }
+    for (int i=0;i<4*nm;i++){
+        spinor_field_copy_f(psi + i, smeared_psi  + i);
+    }
+    for (int i=0;i<4*nm;i++){
+        start_sf_sendrecv(psi + i);
+        complete_sf_sendrecv(psi + i);
+    }
+    free_spinor_field_f(smeared_psi);
+}
