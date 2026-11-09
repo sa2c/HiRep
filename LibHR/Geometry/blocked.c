@@ -16,7 +16,7 @@
 #include "utils.h"
 
 static int init=0;
-static int xbl,ybl,zbl,xnl,ynl,znl;
+static int x_bl,y_bl,z_bl,x_nl,y_nl,z_nl;
 
 static int block_size(int L)
 {
@@ -34,12 +34,12 @@ static int block_size(int L)
 
 static void init_block_size() 
 {
-	xbl=block_size(X);
-	xnl=X/xbl;
-	ybl=block_size(Y);
-	ynl=Y/ybl;
-	zbl=block_size(Z);
-	znl=Z/zbl;
+	x_bl=block_size(X);
+	x_nl=X/x_bl;
+	y_bl=block_size(Y);
+	y_nl=Y/y_bl;
+	z_bl=block_size(Z);
+	z_nl=Z/z_bl;
 }
 
 
@@ -60,22 +60,22 @@ static int index2(int x0,int x1,int x2,int x3)
    y2=safe_mod(x2,Y);
    y3=safe_mod(x3,Z);
 
-   xb1=y1%xbl;
-   xb2=y2%ybl;
-   xb3=y3%zbl;
+   xb1=y1%x_bl;
+   xb2=y2%y_bl;
+   xb3=y3%z_bl;
 
-   xn1=y1/xbl;
-   xn2=y2/ybl;
-   xn3=y3/zbl;   
+   xn1=y1/x_bl;
+   xn2=y2/y_bl;
+   xn3=y3/z_bl;
 
    if ((y0%2)==0)
-      ib=y0*xbl*ybl*zbl+2*(xb3+xb2*zbl+xb1*zbl*ybl);
+      ib=y0*x_bl*y_bl*z_bl+2*(xb3+xb2*z_bl+xb1*z_bl*y_bl);
    else
-      ib=(y0-1)*xbl*ybl*zbl+2*(xb3+xb2*zbl+xb1*zbl*ybl)+1;
+      ib=(y0-1)*x_bl*y_bl*z_bl+2*(xb3+xb2*z_bl+xb1*z_bl*y_bl)+1;
 
-   in=xn3+xn2*znl+xn1*znl*ynl;
+   in=xn3+xn2*z_nl+xn1*z_nl*y_nl;
 
-   return(ib+in*T*xbl*ybl*zbl);
+   return(ib+in*T*x_bl*y_bl*z_bl);
 }
 
 
@@ -129,19 +129,19 @@ static int index_noT(int x0,int x1,int x2,int x3)
    y2=safe_mod(x2,Y);
    y3=safe_mod(x3,Z);
 
-   xb1=y1%xbl;
-   xb2=y2%ybl;
-   xb3=y3%zbl;
+   xb1=y1%x_bl;
+   xb2=y2%y_bl;
+   xb3=y3%z_bl;
 
-   xn1=y1/xbl;
-   xn2=y2/ybl;
-   xn3=y3/zbl;   
+   xn1=y1/x_bl;
+   xn2=y2/y_bl;
+   xn3=y3/z_bl;
 
-   ib=y0*xbl*ybl*zbl+(xb3+xb2*zbl+xb1*ybl*zbl);
+   ib=y0*x_bl*y_bl*z_bl+(xb3+xb2*z_bl+xb1*y_bl*z_bl);
 
-   in=xn3+xn2*znl+xn1*ynl*znl;
+   in=xn3+xn2*z_nl+xn1*y_nl*z_nl;
 
-   return(ib+in*T*xbl*ybl*zbl);
+   return(ib+in*T*x_bl*y_bl*z_bl);
 }
 
 void geometry_blocked_noT(void)
